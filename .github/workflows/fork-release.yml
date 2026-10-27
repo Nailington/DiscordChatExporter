@@ -1,12 +1,18 @@
 name: release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (for example, 2.48.1)"
+        required: true
+        type: string
   push:
     branches:
       - "release/**"
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -17,17 +23,20 @@ env:
 jobs:
   meta:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Resolve release version
         id: version
         shell: bash
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#release/}"
+          version="${VERSION_INPUT:-${GITHUB_REF_NAME#release/}}"
 
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Release branch must be named release/<semver>, e.g. release/2.48.0-wft.1"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Use a numeric release version, for example 2.48.1."
             exit 1
           fi
 
@@ -64,7 +73,7 @@ jobs:
           dotnet test DiscordChatExporter.Cli.Tests
           -p:CSharpier_Bypass=true
           --configuration Release
-          --filter "FullyQualifiedName~ClientPropertiesSpecs|FullyQualifiedName~JsonRetrySpecs|FullyQualifiedName~Conversion|FullyQualifiedName~Continuation|FullyQualifiedName~Manifest|FullyQualifiedName~EtaEstimatorSpecs|FullyQualifiedName~ExportProgressSpecs|FullyQualifiedName~ExportFormatSpecs|FullyQualifiedName~ExportSummarizerSpecs|FullyQualifiedName~ExportCatalogBuilderSpecs|FullyQualifiedName~ExportContextAssetSpecs|FullyQualifiedName~DiscordDataParsingSpecs|FullyQualifiedName~DiscordClientMessageRangeSpecs|FullyQualifiedName~RateLimitSpecs|FullyQualifiedName~CountMessagesParsingSpecs|FullyQualifiedName~MessageCountEstimatorSpecs|FullyQualifiedName~MessageFilterFactorySpecs|FullyQualifiedName~RecentExportDirsSpecs|FullyQualifiedName~SqliteMessageWriterSpecs|FullyQualifiedName~SqliteExportReaderSpecs"
+          --filter "FullyQualifiedName~ClientPropertiesSpecs|FullyQualifiedName~JsonRetrySpecs|FullyQualifiedName~ChannelMentionSpecs|FullyQualifiedName~Conversion|FullyQualifiedName~Continuation|FullyQualifiedName~Manifest|FullyQualifiedName~EtaEstimatorSpecs|FullyQualifiedName~ExportProgressSpecs|FullyQualifiedName~ExportFormatSpecs|FullyQualifiedName~ExportSummarizerSpecs|FullyQualifiedName~ExportCatalogBuilderSpecs|FullyQualifiedName~ExportContextAssetSpecs|FullyQualifiedName~DiscordDataParsingSpecs|FullyQualifiedName~DiscordClientMessageRangeSpecs|FullyQualifiedName~RateLimitSpecs|FullyQualifiedName~CountMessagesParsingSpecs|FullyQualifiedName~MessageCountEstimatorSpecs|FullyQualifiedName~MessageFilterFactorySpecs|FullyQualifiedName~RecentExportDirsSpecs|FullyQualifiedName~SqliteMessageWriterSpecs|FullyQualifiedName~SqliteExportReaderSpecs"
           --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
       - name: Run GUI tests
         run: >
@@ -73,8 +82,9 @@ jobs:
           --configuration Release
 
   pack:
-    needs: meta
+    needs: [meta, format, test]
     strategy:
+      fail-fast: false
       matrix:
         app:
           - DiscordChatExporter.Cli
@@ -141,33 +151,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.meta.outputs.version }}
         shell: bash
         run: |
-          cat > release-notes.md <<'EOF'
-          Maintained fork of DiscordChatExporter focused on resilient long-running exports, conservative Discord API usage, and improved archive/search tooling.
-
-          Included in this release:
-          - resumable and checkpointed whole-server exports
-          - manifest-backed setting restoration for CLI resume and incremental updates
-          - consistent GUI/CLI continuation behavior, including media/filter/markdown settings
-          - conservative user-token request pacing and coordinated rate-limit handling
-          - shared metadata caching and duplicate-request suppression
-          - request-level recovery for malformed or truncated Discord JSON
-          - SQLite export, full-text search, library support, and offline conversion
-          - bounded retries and permanent-failure handling
-          - Windows user-token browser/TLS transport
-          - self-contained CLI and GUI builds for Windows, Linux, and macOS
-
-          See the README for recommended CLI usage and the full list of changes.
-
-          Based on upstream DiscordChatExporter by Tyrrrz, with selected work from other community forks. Full credits are available in the README and NOTICE.
-          EOF
-
-          gh release create "$VERSION"             --repo "${GITHUB_REPOSITORY}"             --target "${GITHUB_SHA}"             --title "DiscordChatExporter $VERSION"             --notes-file release-notes.md
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "DiscordChatExporter $VERSION" \
+            --notes-file .github/release-notes.md \
+            --draft
 
   deploy:
     needs:
@@ -175,6 +172,7 @@ jobs:
       - release
       - pack
     strategy:
+      fail-fast: false
       matrix:
         app:
           - DiscordChatExporter.Cli
@@ -222,3 +220,20 @@ jobs:
           ${{ matrix.asset }}.${{ matrix.rid }}.zip
           --repo "${GITHUB_REPOSITORY}"
           --clobber
+
+  publish:
+    needs: [meta, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: >
+          gh release edit "$VERSION"
+          --repo "$GITHUB_REPOSITORY"
+          --draft=false
+          --latest

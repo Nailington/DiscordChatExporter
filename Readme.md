@@ -1,11 +1,24 @@
 # DiscordChatExporter
 
-[![Build](https://img.shields.io/github/actions/workflow/status/wefalltomorrow/DiscordChatExporter/main.yml?branch=prime)](https://github.com/wefalltomorrow/DiscordChatExporter/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/Nailington/DiscordChatExporter/main.yml?branch=prime)](https://github.com/Nailington/DiscordChatExporter/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](License.txt)
 
 Maintained fork of **DiscordChatExporter** focused on resilient long-running exports, conservative Discord API usage, and improved archive/search tooling.
 
 The fork remains close to upstream while selectively incorporating useful changes from other community forks.
+
+This fork includes the improvements from [wefalltomorrow/DiscordChatExporter](https://github.com/wefalltomorrow/DiscordChatExporter), plus a fix for exports interrupted by inaccessible channel mentions. Download builds from [Releases](https://github.com/Nailington/DiscordChatExporter/releases).
+
+## Publishing a release
+
+1. Update `.github/release-notes.md` with the changes for the new version and push to `prime`.
+2. Run the **release** workflow in GitHub Actions with a numeric version such as `2.48.1`, or use:
+
+   ```sh
+   gh workflow run fork-release.yml --repo Nailington/DiscordChatExporter --ref prime -f version=2.48.1
+   ```
+
+The workflow builds and tests the app, packages GUI and CLI binaries for nine platform targets, creates a draft release, and publishes it only after all 18 downloads are uploaded. Use a new version for each release. Pushing a `release/<version>` branch also starts the same cycle. No Discord token is required for release tests.
 
 <p align="center">
     <img src="favicon.png" alt="DiscordChatExporter" />
