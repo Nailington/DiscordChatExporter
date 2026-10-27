@@ -287,7 +287,7 @@ internal partial class HtmlMarkdownVisitor(
 
             var channel = mention.TargetId?.Pipe(context.TryGetChannel);
             var symbol = channel?.IsVoice == true ? "🔊" : "#";
-            var name = channel?.Name ?? "deleted-channel";
+            var name = context.GetChannelName(mention.TargetId);
 
             buffer.Append(
                 // lang=html

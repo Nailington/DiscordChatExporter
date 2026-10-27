@@ -64,7 +64,7 @@ internal partial class PlainTextMarkdownVisitor(ExportContext context, StringBui
                 await context.PopulateChannelAsync(mention.TargetId.Value, cancellationToken);
 
             var channel = mention.TargetId?.Pipe(context.TryGetChannel);
-            var name = channel?.Name ?? "deleted-channel";
+            var name = context.GetChannelName(mention.TargetId);
 
             buffer.Append($"#{name}");
 

@@ -183,6 +183,16 @@ internal class ExportContext(
 
     public Channel? TryGetChannel(Snowflake id) => _channelsById.GetValueOrDefault(id);
 
+    public string GetChannelName(Snowflake? id) =>
+        id is { } channelId
+            ? TryGetChannel(channelId)?.Name
+                ?? (
+                    Discord.IsChannelForbidden(channelId)
+                        ? "unavailable-channel"
+                        : "deleted-channel"
+                )
+            : "deleted-channel";
+
     public Role? TryGetRole(Snowflake id) => _rolesById.GetValueOrDefault(id);
 
     public string? TryGetEmojiImageUrl(Snowflake? id, string name, bool isAnimated) =>

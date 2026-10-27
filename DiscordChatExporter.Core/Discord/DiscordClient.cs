@@ -631,7 +631,8 @@ public class DiscordClient(
 
     private async ValueTask<JsonElement?> TryGetJsonResponseAsync(
         string url,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        bool allowForbidden = false
     )
     {
         Exception? lastJsonException = null;
@@ -642,7 +643,10 @@ public class DiscordClient(
 
             if (!response.IsSuccessStatusCode)
             {
-                if (response.StatusCode == HttpStatusCode.NotFound)
+                if (
+                    response.StatusCode == HttpStatusCode.NotFound
+                    || (allowForbidden && response.StatusCode == HttpStatusCode.Forbidden)
+                )
                     return null;
 
                 throw await CreateFailedResponseExceptionAsync(url, response, cancellationToken);
@@ -979,12 +983,26 @@ public class DiscordClient(
         return Channel.Parse(response, parent);
     }
 
+    internal bool IsChannelForbidden(Snowflake channelId) =>
+        _resolvedTokenKind is { } tokenKind
+        && _knownUnavailableRequests.TryGetValue(
+            (tokenKind, $"channels/{channelId}"),
+            out var statusCode
+        )
+        && statusCode == HttpStatusCode.Forbidden;
+
     public async ValueTask<Channel?> TryGetChannelAsync(
         Snowflake channelId,
         CancellationToken cancellationToken = default
     )
     {
-        var response = await TryGetJsonResponseAsync($"channels/{channelId}", cancellationToken);
+        // Forwarded messages may mention channels that the exporting account cannot access.
+        // Treat those optional lookups as unavailable while required channel requests still fail.
+        var response = await TryGetJsonResponseAsync(
+            $"channels/{channelId}",
+            cancellationToken,
+            allowForbidden: true
+        );
         if (response is null)
             return null;
 
